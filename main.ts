@@ -1,108 +1,115 @@
-// The Most Boring Object, Reviewed in One Line
-// Writes a single-line, <= 200 character review of a doorstop to /output/entry.txt.
+// One-line review of the most boring object imaginable: a doorstop.
+// A rubber wedge that spends its whole life on the floor getting kicked
+// and stepped on, only to still lose to a light breeze. That mismatch —
+// an object built to hold a door, beaten by moving air — is the whole joke,
+// and the single star at the end delivers the verdict.
 //
-// Why a doorstop: it is the dullest everyday object imaginable — a rubber
-// wedge whose whole job is to sit on the floor and be ignored — and the joke
-// comes from how it really behaves: kicked, stepped on, and still beaten by
-// a light breeze. The turn lands fast and the last words sharpen it.
-//
-// Structure of this script:
-//   1. Constants — output path and the entry-text limits.
-//   2. The entry text itself (a single literal, never assembled at runtime,
-//      so the submitted line cannot drift from what was reviewed).
-//   3. Small validation helpers, one rule each, composed by validateLine().
-//   4. writeEntry() — creates the output directory and writes the file.
-//   5. main() — wires the steps together in order.
+// How this file is laid out:
+//   1. The review itself, kept as one fixed literal so the submitted line
+//      can never drift away from the line that was checked.
+//   2. Limits for the gate (length window and output destination).
+//   3. Small checks, each enforcing a single gate rule.
+//   4. A writer that prepares the folder and saves the file.
+//   5. The entry point, which runs the checks before writing anything.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 // ---------------------------------------------------------------------------
-// Configuration
+// Review text
 // ---------------------------------------------------------------------------
 
-const OUTPUT_PATH = "/output/entry.txt";
-
-// The gate requires 1-200 characters, UTF-8 text, not only whitespace,
-// and a single line. These bounds are the contract validateLine enforces.
-const MIN_CHARS = 1;
-const MAX_CHARS = 200;
-
-// ---------------------------------------------------------------------------
-// Entry text
-// ---------------------------------------------------------------------------
-
-// One line, 119 characters: subject, colon, the gag, then a one-star rating.
-// The stars are literal Unicode characters, so length is measured in code
-// points (see countChars), not UTF-16 code units or bytes.
-const ENTRY_TEXT =
+// A single line of 119 characters: the subject, a colon, the gag about
+// being kicked and stepped on yet losing to a breeze, then one filled star
+// followed by four empty ones. Stars are literal Unicode, so the length
+// check below counts code points rather than UTF-16 units or bytes.
+const REVIEW_TEXT =
   "The doorstop: a rubber wedge whose entire career is being kicked, stepped on, and still losing to a light breeze. ★☆☆☆☆";
 
 // ---------------------------------------------------------------------------
-// Validation helpers — one rule per function, so a failure names its rule.
+// Configuration
 // ---------------------------------------------------------------------------
 
-/** Counts Unicode code points, so a star counts as one character. */
-function countChars(text: string): number {
-  return [...text].length;
+const DESTINATION_PATH = "/output/entry.txt";
+
+// The gate accepts 1-200 characters of UTF-8 text, non-blank, on one line.
+// These two bounds are the length window the checks below enforce.
+const MIN_ENTRY_CHARS = 1;
+const MAX_ENTRY_CHARS = 200;
+
+// ---------------------------------------------------------------------------
+// Gate checks — each helper enforces exactly one rule, so a failure names
+// the rule that was broken. runGateChecks composes them and reports the
+// character count for the success message.
+// ---------------------------------------------------------------------------
+
+/** Measures length in Unicode code points, so each star counts as one. */
+function measureLengthInCodePoints(line: string): number {
+  return [...line].length;
 }
 
-/** The entry must fit the gate's length window. Returns the char count so
- *  the caller can report it without recounting. */
-function validateLength(text: string): number {
-  const chars = countChars(text);
-  if (chars < MIN_CHARS || chars > MAX_CHARS) {
-    throw new Error(
-      `Entry is ${chars} characters; must be ${MIN_CHARS}-${MAX_CHARS}.`,
-    );
-  }
-  return chars;
-}
-
-/** The entry must contain something besides whitespace. */
-function validateNotBlank(text: string): void {
-  if (text.trim().length === 0) {
+/** The review must contain at least one non-whitespace character. */
+function checkNotOnlyWhitespace(line: string): void {
+  if (line.trim().length === 0) {
     throw new Error("Entry must not be only whitespace.");
   }
 }
 
-/** The entry must be exactly one line — no LF or CR anywhere. */
-function assertSingleLine(text: string): void {
-  if (text.includes("\n") || text.includes("\r")) {
+/** The review must be exactly one line — no line-feed or carriage-return. */
+function checkHasNoLineBreaks(line: string): void {
+  if (line.includes("\n") || line.includes("\r")) {
     throw new Error("Entry must be a single line.");
   }
 }
 
 /**
- * Runs every gate rule over the entry and returns its character count.
- * Throws on the first rule that fails, naming the rule that failed.
+ * The review must fit inside the gate's length window. Returns the
+ * character count so the caller can report it without recounting.
  */
-function validateLine(text: string): number {
-  const chars = validateLength(text);
-  validateNotBlank(text);
-  assertSingleLine(text);
-  return chars;
+function checkLengthWithinWindow(line: string): number {
+  const total = measureLengthInCodePoints(line);
+  if (total < MIN_ENTRY_CHARS || total > MAX_ENTRY_CHARS) {
+    throw new Error(
+      `Entry is ${total} characters; must be ${MIN_ENTRY_CHARS}-${MAX_ENTRY_CHARS}.`,
+    );
+  }
+  return total;
+}
+
+/**
+ * Runs every gate rule over the review and returns its character count.
+ * Throws on the first rule that fails.
+ */
+function runGateChecks(line: string): number {
+  checkNotOnlyWhitespace(line);
+  checkHasNoLineBreaks(line);
+  return checkLengthWithinWindow(line);
 }
 
 // ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
 
-/** Creates the output directory if needed, then writes the entry as UTF-8. */
-function writeEntry(text: string): void {
-  mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
-  writeFileSync(OUTPUT_PATH, text, "utf8");
+/** Creates the folder for the destination file when it does not exist yet. */
+function ensureOutputDirectory(): void {
+  mkdirSync(dirname(DESTINATION_PATH), { recursive: true });
+}
+
+/** Prepares the output folder, then writes the review as UTF-8 text. */
+function saveReview(line: string): void {
+  ensureOutputDirectory();
+  writeFileSync(DESTINATION_PATH, line, "utf8");
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// Entry point
 // ---------------------------------------------------------------------------
 
 function main(): void {
-  // Validate first so a bad entry fails before anything is written.
-  const chars = validateLine(ENTRY_TEXT);
-  writeEntry(ENTRY_TEXT);
-  console.log(`Wrote ${chars} characters to ${OUTPUT_PATH}`);
+  // Check first so a review that fails the gate never reaches the disk.
+  const charCount = runGateChecks(REVIEW_TEXT);
+  saveReview(REVIEW_TEXT);
+  console.log(`Wrote ${charCount} characters to ${DESTINATION_PATH}`);
 }
 
 main();
